@@ -153,7 +153,7 @@ bool Zeus_TgBot::sendMessage(uint32_t chat_id, String text)
 		return false;
 
 	String command= botkey + "/sendMessage?chat_id="+chat_id+"&text="+text;
-	Serial.println(command);
+	//Serial.println(command);
 	long StartTime=millis() + 8000;
 	while ((long)millis()<(StartTime))   // loop for a while to send the message
 	{

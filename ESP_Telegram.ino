@@ -75,7 +75,7 @@ void setup()
 void Tg_Message_Prossess(uint32_t mgs_id,uint32_t sender_id,String msg)
 {
 
-	Serial.println("XXX - "+msg);
+	Serial.println("Get Message - "+msg);
 	Serial.println(mgs_id);
 	Bot.sendMessage(sender_id, msg);
 }

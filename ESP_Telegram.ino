@@ -70,10 +70,6 @@ void setup()
 	{
 		Serial.println("Can Not Get Bot Info");
 	}
-
-
-	//Bot.sendMessage(110014525, "سلام من از سیسوگ سلام میکنم");
-
 }
 
 void Tg_Message_Prossess(uint32_t mgs_id,uint32_t sender_id,String msg)

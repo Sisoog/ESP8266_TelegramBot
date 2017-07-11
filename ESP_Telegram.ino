@@ -6,9 +6,9 @@
 
 
 ESP8266WiFiMulti WiFiMulti;
-#define Ssid	 	"Radshid ASUS2020"
-#define Password	"modern1234!@^%$"
-#define Bot_Key		"427594526:AAGyn4uPG3R4woujYL-N1TQpDEslKw7HKjU"
+#define Ssid	 	"Your_WIFI_SSID"
+#define Password	"Your_WIFI_PASS"
+#define Bot_Key		"Your_BOT_Key"
 
 Zeus_TgBot	Bot(Bot_Key);
 

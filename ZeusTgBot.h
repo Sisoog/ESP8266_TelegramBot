@@ -12,8 +12,11 @@
 #include <ESP8266WiFiMulti.h>
 #include "ArduinoJson.h"
 
+#define TG_HOST 		"api.telegram.org"
+#define SSL_PORT 		443
+#define LIMIT_Message	1
 
-typedef void (*Message_Event) (uint32_t mgs_id,uint32_t sender_id,String msg);
+typedef void (*Message_Event) (String Message_id,String Message_From,String Message_Text,bool is_callback,String Call_ID);
 
 class Zeus_TgBot {
 public:
@@ -32,17 +35,22 @@ public:
 	void Set_Message_Event(Message_Event Event_Call);
 	bool GetMe(User_t *User);
 	bool GetUpdates();
-	bool sendMessage(uint32_t chat_id, String text);
+	bool sendMessage(String chat_id, String text);
+	bool sendMessage(String chat_id, String text, String reply_markup);
+	bool answerCallbackQuery(String callback_query_id,String Text);
+	bool EditMessage(String msg_id,String chat_id, String text, String reply_markup);
 
 private:
 	String botkey;
-	StaticJsonBuffer<4096> jsonBuffer;
 	WiFiClientSecure client;
 	volatile uint32_t	UpdateID;
 
-	String SendCommand(String command);
-	void ProssessOneMessage(String msg);
+	String SendCommand(String command, JsonObject& payload);
+	void ProssessOneMessage(JsonObject& Message);
+	void ProssessOneCallBack(JsonObject& Message);
+
 	Message_Event Func_Message_Event;
+	bool is_debug = false;
 };
 
 #endif /* ZEUSTGBOT_H_ */

@@ -12,6 +12,7 @@ Zeus_TgBot::Zeus_TgBot(String token)
 	botkey = "bot"+token;
 	UpdateID = 0;
 	Func_Message_Event = NULL;
+	is_debug = false;
 }
 
 Zeus_TgBot::~Zeus_TgBot()
@@ -24,148 +25,313 @@ void Zeus_TgBot::Set_Message_Event(Message_Event Event_Call)
 	Func_Message_Event = Event_Call;
 }
 
-String Zeus_TgBot::SendCommand(String command)
+String Zeus_TgBot::SendCommand(String command, JsonObject& payload)
 {
-#define Max_MessageSize		1024
+#define Max_MessageSize		4096
     String mess="";
     long now;
-    bool avail;
+    int ch_count=0;
 
     // Connect with api.telegram.org
-    IPAddress server(149,154,167,198);
-    if (client.connect(server, 443))
+    if(!client.connected())
     {
-        //Serial.println(".... connected to Telegram server");
-        int ch_count=0;
-        client.println("GET /"+command);
-        now=millis();
-        avail=false;
-        while (millis()-now<1500)
-        {
-            while (client.available())
-            {
-            	  String Answer = client.readString();
-				  if (ch_count<Max_MessageSize)
-				  {
-					 mess +=Answer;
-					 ch_count+=Answer.length();
-				  }
-				  avail=true;
-			}
-
-            if (avail)
-            {
-            	//Serial.println();
-            	//Serial.println(mess);
-            	//Serial.println();
-            	break;
-			}
-        }
+    	if(is_debug)
+    	{
+    		Serial.println("#ZT Try Connect to Server");
+    	}
+    	if(!client.connect(TG_HOST, SSL_PORT))
+    		return "";
+    	if(is_debug)
+    	{
+    		Serial.println("#ZT Connect OK");
+    	}
     }
-    return mess;
-}
 
+	// POST URI
+	client.print("POST /" + command); client.println(" HTTP/1.1");
+	// Host header
+	client.print("Host:"); client.println(TG_HOST);
+	// JSON content type
+	client.println("Content-Type: application/json");
+	// Content length
+	int length = payload.measureLength();
+	client.print("Content-Length:"); client.println(length);
+	// End of headers
+	client.println();
+
+	// POST message body
+	//json.printTo(client); // very slow ??
+	 String out;
+	 payload.printTo(out);
+	 client.println(out);
+
+
+	 now=millis();
+	 bool responseReceived=false;
+	 bool finishedHeaders = false;
+	 bool currentLineIsBlank = true;
+	 while (millis()-now<1500)
+	 {
+	 	while (client.available())
+	 	{
+	 		char c = client.read();
+	 		responseReceived=true;
+
+	         if(!finishedHeaders)
+	         {
+	           if (currentLineIsBlank && c == '\n')
+	           {
+	             finishedHeaders = true;
+	           }
+	           else
+	           {
+	            // headers = headers + c;
+	           }
+	         }
+	         else
+	         {
+	           if (ch_count < Max_MessageSize)
+	           {
+	        	 mess=mess+c;
+	             ch_count++;
+	   		   }
+	         }
+
+	         if (c == '\n')
+	         {
+	           currentLineIsBlank = true;
+	         }
+	         else if (c != '\r')
+	         {
+	           currentLineIsBlank = false;
+	         }
+
+	 	}
+
+	    if (responseReceived)
+	    {
+	        //Serial.println();
+	        //Serial.println(mess);
+	        //Serial.println();
+	    }
+	   	break;
+	  }
+
+
+	return mess;
+}
 
 bool Zeus_TgBot::GetMe(Zeus_TgBot::User_t *User)
 {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& payload = jsonBuffer.createObject();
 	String Command = botkey + "/getme";
-	String ServerResult = SendCommand(Command);
-	jsonBuffer.clear();
+	String ServerResult = SendCommand(Command,payload);
+
 	JsonObject& root = jsonBuffer.parseObject(ServerResult);
 
-	if(root["ok"]==true)
+	if(root.success())
 	{
-		String Result = root["result"];
-		JsonObject& JUser = jsonBuffer.parseObject(Result);
-		User->id = JUser["id"];
+		if (root.containsKey("result"))
+		{
+			String first_name =root["result"]["first_name"];;
+			String last_name = root["result"]["last_name"];
+			String username =  root["result"]["username"];
 
-		String first_name =JUser["first_name"];
-		String last_name = JUser["last_name"];
-		String username =  JUser["username"];
+			User->first_name = first_name;
+			User->last_name =last_name;
+			User->username =username;
 
-		User->first_name = first_name;
-		User->last_name =last_name;
-		User->username =username;
-
-		return true;
+			return true;
+		}
 	}
 	return false;
 }
 
-void Zeus_TgBot::ProssessOneMessage(String msg)
+void Zeus_TgBot::ProssessOneMessage(JsonObject& Message)
 {
-	StaticJsonBuffer<1024> jsBuf;
-	JsonObject& Jmsg = jsBuf.parseObject(msg);
-	String Message_Text = Jmsg["text"];
-	String Message_From	= Jmsg["from"];
-	uint32_t Message_ID	= Jmsg["message_id"];
-	jsBuf.clear();
-	JsonObject& JFrom = jsBuf.parseObject(Message_From);
-	uint32_t Sender_ID	= JFrom["id"];
+	String Message_Text = Message["message"]["text"];
+	String Message_From	= Message["message"]["from"]["id"];
+	String Message_ID	= Message["message"]["message_id"];
 
+	if(is_debug)
+	{
+		Serial.println("Receive Message: ");
+		Serial.println("Message ID "+Message_ID);
+		Serial.println("Message From "+Message_From);
+		Serial.println("Message Text "+Message_Text);
+	}
 
-	jsBuf.clear();
-	JsonObject& root = jsonBuffer.createObject();
-	root["inline_keyboard"] = "For Test";
-	root["url"] = "https://sisoog.com";
-	root.printTo(Serial);
-
-	//Serial.println(msg);
-	//Serial.println(Message_Text);
-	//Serial.println(Message_ID);
-	//Serial.println(Sender_ID);
 	if(Func_Message_Event!=NULL)
-		Func_Message_Event(Message_ID,Sender_ID,Message_Text);
+		Func_Message_Event(Message_ID,Message_From,Message_Text,false,"");
+}
+
+void Zeus_TgBot::ProssessOneCallBack(JsonObject& Message)
+{
+	//Message.printTo(Serial);
+
+	String CallBack_ID  = Message["callback_query"]["id"];
+	String Message_Text = Message["callback_query"]["data"];
+	String Message_From	= Message["callback_query"]["from"]["id"];
+	String Message_ID	= Message["callback_query"]["message"]["message_id"];
+
+	if(is_debug)
+	{
+		Serial.println("Receive CallBack: ");
+		Serial.println("CallBack ID "+CallBack_ID);
+		Serial.println("Message ID "+Message_ID);
+		Serial.println("Message From "+Message_From);
+		Serial.println("CallBack Data "+Message_Text);
+	}
+
+	if(Func_Message_Event!=NULL)
+		Func_Message_Event(Message_ID,Message_From,Message_Text,true,CallBack_ID);
+
 }
 
 bool Zeus_TgBot::GetUpdates()
 {
-	String Command = botkey + "/getupdates?offset="+UpdateID;
-	//Serial.println(Command);
-	String ServerResult = SendCommand(Command);
-	jsonBuffer.clear();
-	JsonObject& root = jsonBuffer.parseObject(ServerResult);
-	if(root["ok"]==true)
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& payload = jsonBuffer.createObject();
+
+	String Command = botkey + "/getupdates";
+
+	payload["offset"] = String(UpdateID);
+	payload["limit"] = String(LIMIT_Message);
+
+	String ServerResult = SendCommand(Command,payload);
+
+	if(ServerResult != "")
 	{
-		int Message_Number = root["result"].size();
-		for(int MeaageID = 0;MeaageID<Message_Number;MeaageID++)
+		if (is_debug)
 		{
-			String Message = root["result"][MeaageID];
-			//Serial.print(MeaageID);
-			//Serial.println(" : "+Message);
-			JsonObject& JMsg = jsonBuffer.parseObject(Message);
-			uint32_t ID =JMsg["update_id"];
-			String Msg = JMsg["message"];
-			if(JMsg.size()==2)
+		   Serial.print("incoming message length");
+		   Serial.println(ServerResult.length());
+		   Serial.println("Creating DynamicJsonBuffer");
+		}
+
+		// Parse response into Json object
+		DynamicJsonBuffer jsonBuffer;
+		JsonObject& root = jsonBuffer.parseObject(ServerResult);
+
+		if(root.success())
+		{
+			if (is_debug) Serial.println();
+			if (root.containsKey("result"))
 			{
-				UpdateID = ID+1;
-				ProssessOneMessage(Msg);
+				int Message_Number = root["result"].size();
+				if(Message_Number>0)
+				{
+					for(int MeaageID = 0;MeaageID<Message_Number;MeaageID++)
+					{
+						int update_id 		= root["result"][MeaageID]["update_id"];
+						JsonObject& Message = root["result"][MeaageID];
+						UpdateID = update_id+1;
+
+						if(Message.containsKey("message"))
+						{
+							ProssessOneMessage(Message);
+						}
+
+						if(Message.containsKey("callback_query"))
+						{
+							ProssessOneCallBack(Message);
+						}
+
+					}
+				}
+				else
+				{
+					//if (is_debug) Serial.println("no new messages");
+				}
+				//if (is_debug) Serial.println();
+				return true;
+			}
+			else
+			{
+				if (is_debug) Serial.println("Response contained no 'result'");
 			}
 		}
-		return true;
 	}
+	//if (is_debug) Serial.println();
 	return false;
 }
 
-bool Zeus_TgBot::sendMessage(uint32_t chat_id, String text)
+bool Zeus_TgBot::answerCallbackQuery(String callback_query_id,String Text)
 {
-	if(text=="")
-		return false;
+	String command= botkey + "/answerCallbackQuery";
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& payload = jsonBuffer.createObject();
 
-	String command= botkey + "/sendMessage?chat_id="+chat_id+"&text="+text;
-	//Serial.println(command);
-	long StartTime=millis() + 8000;
-	while ((long)millis()<(StartTime))   // loop for a while to send the message
-	{
-		String smess=SendCommand(command);
-		jsonBuffer.clear();
-		JsonObject& root = jsonBuffer.parseObject(smess);
-		if(root["ok"]==true)
-		{
-			return true;
-		}
-		delay(1000);
-	}
+	payload["callback_query_id"] = callback_query_id;
+	payload["text"] = Text;
 
-	return false;
+	String Resp = SendCommand(command, payload);
+	if(is_debug) Serial.println(Resp);
+	return true;
+}
+
+bool Zeus_TgBot::sendMessage(String chat_id, String text)
+{
+  String command= botkey + "/sendMessage";
+
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& payload = jsonBuffer.createObject();
+
+  payload["chat_id"] = chat_id;
+  payload["text"] = text;
+
+
+  String Resp = SendCommand(command, payload);
+  if(is_debug) Serial.println(Resp);
+
+  return true;
+}
+
+bool Zeus_TgBot::sendMessage(String chat_id, String text, String reply_markup)
+{
+	String command= botkey + "/sendMessage";
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& payload = jsonBuffer.createObject();
+
+  payload["chat_id"] = chat_id;
+  payload["text"] = text;
+  JsonObject& replyMarkup = payload.createNestedObject("reply_markup");
+
+  DynamicJsonBuffer keyboardBuffer;
+  replyMarkup["inline_keyboard"] = keyboardBuffer.parseArray(reply_markup);
+
+  String response = SendCommand(command, payload);
+  JsonObject& root = jsonBuffer.parseObject(response);
+  if(root.success())
+  {
+  	return true;
+  }
+  return false;
+}
+
+
+bool Zeus_TgBot::EditMessage(String msg_id,String chat_id, String text, String reply_markup)
+{
+  String command= botkey + "/editMessageText";
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& payload = jsonBuffer.createObject();
+
+  payload["chat_id"] = chat_id;
+  payload["message_id"] = msg_id;
+  payload["text"] = text;
+
+  JsonObject& replyMarkup = payload.createNestedObject("reply_markup");
+
+  DynamicJsonBuffer keyboardBuffer;
+  replyMarkup["inline_keyboard"] = keyboardBuffer.parseArray(reply_markup);
+
+  String response = SendCommand(command, payload);
+
+  JsonObject& root = jsonBuffer.parseObject(response);
+  if(root.success())
+  {
+  	return true;
+  }
+  return false;
 }

@@ -2,7 +2,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include "ZeusTgBot.h"
-
+#include <EEPROM.h>
 
 
 ESP8266WiFiMulti WiFiMulti;
@@ -19,8 +19,8 @@ const int RED = 15;
 const int GREEN = 12;
 const int BLUE = 13;
 
-
-void Tg_Message_Prossess(uint32_t mgs_id,uint32_t sender_id,String msg);
+void Tg_Message_Prossess(String mgs_id,String sender_id,String msg,bool is_callback,String Call_ID);
+uint32_t Command_Run = 0;
 
 void setup()
 {
@@ -72,12 +72,86 @@ void setup()
 	}
 }
 
-void Tg_Message_Prossess(uint32_t mgs_id,uint32_t sender_id,String msg)
+void Tg_Message_Prossess(String mgs_id,String sender_id,String msg,bool is_callback,String Call_ID)
 {
 
-	Serial.println("Get Message - "+msg);
-	Serial.println(mgs_id);
-	Bot.sendMessage(sender_id, msg);
+	String Intor = "ربات تلگرام سیسوگ \n\
+این ربات توسط تیم سیسوگ برنامه ریزی و با استفاده از آردوینو راه اندازی شده است \n\
+با استفاده از این ربات قادر خواهید بود لوازم منزل را از راه دور و با استفاده از تلگرام کنترل کنید.\n\
+از منوی زیر یکی از کلید ها را انتخاب کنید.";
+
+	String keyboardJson = "[[\{ \"text\" : \"مشاهده سایت سیسوگ\", \"url\" : \"https://sisoog.com\" \} ],"
+						  "[\{ \"text\" : \"عضویت در تلگرام سیسوگ\", \"url\" : \"https://t.me/joinchat/AAAAAEBAGr-XNdPMm3bTIg\" \} ],"
+						  "[\{ \"text\" : \"تغییر وضعیت لامپ سبز\", \"callback_data\" : \"Gtg\" \} ],"
+						  "[\{ \"text\" : \"تغییر وضعیت لامپ قرمز\", \"callback_data\" : \"Rtg\" \} ],"
+						  "[\{ \"text\" : \"تغییر وضعیت لامپ آبی\", \"callback_data\" : \"Btg\" \} ]]";
+
+
+	if(is_callback==true)
+	{
+		/*it's Call Back Data*/
+		Serial.println("Get CallBack - " + msg);
+		if(msg=="Gtg") /*Command For Green LED*/
+		{
+			if(digitalRead(GREEN))
+			{
+				digitalWrite(GREEN, false);
+				Bot.answerCallbackQuery(Call_ID,"لامپ سبز خاموش شد");
+			}
+			else
+			{
+				digitalWrite(GREEN, true);
+				Bot.answerCallbackQuery(Call_ID,"لامپ سبز روشن شد");
+			}
+		}
+
+		if(msg=="Rtg") /*Command For Green LED*/
+		{
+			if(digitalRead(RED))
+			{
+				digitalWrite(RED, false);
+				Bot.answerCallbackQuery(Call_ID,"لامپ قرمز خاموش شد");
+			}
+			else
+			{
+				digitalWrite(RED, true);
+				Bot.answerCallbackQuery(Call_ID,"لامپ قرمز روشن شد");
+			}
+		}
+
+		if(msg=="Btg") /*Command For Green LED*/
+		{
+			if(digitalRead(BLUE))
+			{
+				digitalWrite(BLUE, false);
+				Bot.answerCallbackQuery(Call_ID,"لامپ آبی خاموش شد");
+			}
+			else
+			{
+				digitalWrite(BLUE, true);
+				Bot.answerCallbackQuery(Call_ID,"لامپ آبی روشن شد");
+			}
+		}
+
+		Intor += "\n\n وضعیت لامپ ها\n";
+		Intor += "\n سبز: ";
+		Intor += (digitalRead(GREEN)) ? "روشن":"خاموش";
+		Intor += "\n قرمز: ";
+		Intor += (digitalRead(RED)) ? "روشن":"خاموش";
+		Intor += "\n آبی: ";
+		Intor += (digitalRead(BLUE)) ? "روشن":"خاموش";
+		Intor += "\n\nتعداد درخواست های پردازش شده: " + String(Command_Run);
+		Intor += "\n\nسیسوگ";
+		Command_Run++;
+
+		Bot.EditMessage(mgs_id, sender_id, Intor, keyboardJson);
+	}
+	else
+	{
+		Serial.println("Get Message - " + msg);
+		Bot.sendMessage(sender_id, Intor, keyboardJson);
+	}
+
 }
 
 
@@ -85,9 +159,7 @@ void Tg_Message_Prossess(uint32_t mgs_id,uint32_t sender_id,String msg)
 void loop()
 {
 //Add your repeated code here
-	digitalWrite(GREEN, true);
 	Bot.GetUpdates();
-	digitalWrite(GREEN, false);
-	delay(1000);
+	delay(100);
 
 }
